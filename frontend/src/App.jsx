@@ -1,18 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, Suspense } from 'react';
 import { useAuth } from './context/AuthContext';
-import Login from './pages/Login';
-import Dashboard from './components/Dashboard';
-import VendorManagement from './components/VendorManagement';
-import RfqWorkspace from './components/RfqWorkspace';
-import QuotationCompare from './components/QuotationCompare';
-import ApprovalQueue from './components/ApprovalQueue';
-import BillingCenter from './components/BillingCenter';
-import ReportPanel from './components/ReportPanel';
-import LogsPanel from './components/LogsPanel';
-import AdminDashboard from './components/AdminDashboard';
+const Login = React.lazy(() => import('./pages/Login'));
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+const VendorManagement = React.lazy(() => import('./components/VendorManagement'));
+const RfqWorkspace = React.lazy(() => import('./components/RfqWorkspace'));
+const QuotationCompare = React.lazy(() => import('./components/QuotationCompare'));
+const ApprovalQueue = React.lazy(() => import('./components/ApprovalQueue'));
+const BillingCenter = React.lazy(() => import('./components/BillingCenter'));
+const ReportPanel = React.lazy(() => import('./components/ReportPanel'));
+const LogsPanel = React.lazy(() => import('./components/LogsPanel'));
+const AdminDashboard = React.lazy(() => import('./components/AdminDashboard'));
 import { api } from './utils/api';
-import InventoryManager from './components/InventoryManager';
-import ProductCatalog from './components/ProductCatalog';
+const InventoryManager = React.lazy(() => import('./components/InventoryManager'));
+const ProductCatalog = React.lazy(() => import('./components/ProductCatalog'));
 // Icon library
 import {
   LayoutDashboard,
@@ -64,6 +64,9 @@ const App = () => {
 
   useEffect(() => {
     if (user) {
+      if (user.role === 'Admin' && activeView === 'dashboard') {
+        setActiveView('admin');
+      }
       fetchNotifications();
       const interval = setInterval(fetchNotifications, 15000); // Poll every 15s
       return () => clearInterval(interval);
@@ -97,7 +100,15 @@ const App = () => {
 
   // If user is null, prompt Auth form
   if (!user) {
-    return <Login />;
+    return (
+      <Suspense fallback={
+        <div style={{ display: 'flex', height: '100vh', width: '100%', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-primary)' }}>
+          <div style={{ border: '4px solid var(--border-color)', borderTop: '4px solid var(--primary)', borderRadius: '50%', width: '36px', height: '36px', animation: 'spin 1s linear infinite' }}></div>
+        </div>
+      }>
+        <Login />
+      </Suspense>
+    );
   }
 
   // Determine available navigation views based on user's role
@@ -107,7 +118,6 @@ const App = () => {
         return [
           { id: 'dashboard', label: 'Dashboard' },
           { id: 'rfqs', label: "RFQ's" },
-          { id: 'quotations', label: 'My Quotations' },
           { id: 'purchase_orders', label: 'My Orders' },
           { id: 'invoices', label: 'Invoices' },
           { id: 'reports', label: 'Reports' },
@@ -183,7 +193,7 @@ const App = () => {
     <div style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', backgroundColor: 'var(--bg-primary)' }}>
       
       {/* Top Header Navbar with all Nav items */}
-      <header className="header-nav no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '64px', padding: '0 24px', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)' }}>
+      <header className="header-nav no-print" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', height: '72px', padding: '0 32px', position: 'sticky', top: 0, zIndex: 100, borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-card)', boxShadow: '0 4px 20px rgba(0,0,0,0.02)' }}>
         
         {/* Brand */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer', flexShrink: 0, marginRight: '24px' }} onClick={() => setActiveView('dashboard')}>
@@ -292,8 +302,14 @@ const App = () => {
       </header>
 
       {/* Main Viewport Panel */}
-      <div className="content-viewport" style={{ flex: 1, padding: '24px', width: '100%', maxWidth: '1400px', margin: '0 auto', overflowX: 'hidden' }}>
-        {renderContentView()}
+      <div className="content-viewport" style={{ flex: 1, padding: '48px 40px', width: '100%', maxWidth: '1400px', margin: '0 auto', overflowX: 'hidden' }}>
+        <Suspense fallback={
+          <div style={{ display: 'flex', height: '300px', width: '100%', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ border: '3px solid var(--border-color)', borderTop: '3px solid var(--primary)', borderRadius: '50%', width: '30px', height: '30px', animation: 'spin 1s linear infinite' }}></div>
+          </div>
+        }>
+          {renderContentView()}
+        </Suspense>
       </div>
 
     </div>

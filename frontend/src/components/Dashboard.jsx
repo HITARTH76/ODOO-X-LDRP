@@ -10,6 +10,7 @@ const Dashboard = ({ setActiveView }) => {
   const [recentPos, setRecentPos] = useState([]);
   const [recentInvoices, setRecentInvoices] = useState([]);
   const [pendingApprovals, setPendingApprovals] = useState([]);
+  const [recentApprovedQuotes, setRecentApprovedQuotes] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
@@ -51,12 +52,16 @@ const Dashboard = ({ setActiveView }) => {
           const rfqs = await api.get('/rfqs');
           // Get quotations that need approval
           const pendingList = [];
+          const approvedList = [];
           for (const rfq of rfqs) {
             const quotes = await api.get(`/quotations/rfq/${rfq.id}`);
-            const pendingQuotes = quotes.filter(q => q.status === 'Submitted');
-            pendingList.push(...pendingQuotes);
+            quotes.forEach(q => {
+              if (q.status === 'Submitted' || q.status === 'Under Review') pendingList.push({...q, rfq_title: rfq.title});
+              else if (q.status === 'Approved') approvedList.push({...q, rfq_title: rfq.title});
+            });
           }
           setPendingApprovals(pendingList.slice(0, 5));
+          setRecentApprovedQuotes(approvedList.sort((a,b) => new Date(b.created_at) - new Date(a.created_at)));
         }
       } catch (err) {
         console.error('Failed to load dashboard statistics:', err);
@@ -155,35 +160,67 @@ const Dashboard = ({ setActiveView }) => {
       {/* Main Content: Table & Chart */}
       <div style={{ display: 'flex', gap: '32px', marginBottom: '40px', flexWrap: 'wrap' }}>
         
-        {/* Left: Recent Purchase Orders Table */}
+        {/* Left: Recent Purchase Orders Table / Approved RFQs Table */}
         <div style={{ flex: 2, minWidth: '400px' }}>
-          <h3 style={{ fontSize: '16px', fontWeight: '500', margin: '0 0 16px 0', color: 'var(--text-primary)' }}>Recent Purchase Orders</h3>
+          <h3 style={{ fontSize: '16px', fontWeight: '500', margin: '0 0 16px 0', color: 'var(--text-primary)' }}>
+            {user.role === 'Manager' ? 'Recently Approved RFQs' : 'Recent Purchase Orders'}
+          </h3>
           <div style={{ border: '1px solid var(--border-color)', borderRadius: '8px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: '13px' }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-primary)' }}>
-                  <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>PO#</th>
-                  <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Vendor</th>
-                  <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Amount</th>
-                  <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Status</th>
+                  {user.role === 'Manager' ? (
+                    <>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>RFQ</th>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Vendor</th>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Amount</th>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Status</th>
+                    </>
+                  ) : (
+                    <>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>PO#</th>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Vendor</th>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Amount</th>
+                      <th style={{ padding: '12px 16px', fontWeight: '600', color: 'var(--text-secondary)' }}>Status</th>
+                    </>
+                  )}
                 </tr>
               </thead>
               <tbody>
-                {recentPos.length > 0 ? (
-                  recentPos.slice(0, 4).map((po, idx, arr) => (
-                    <tr key={po.id} style={{ borderBottom: idx === arr.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{po.po_number}</td>
-                      <td style={{ padding: '12px 16px' }}>{po.vendor_name || 'Vendor Partner'}</td>
-                      <td style={{ padding: '12px 16px' }}>{po.total_amount ? `$${parseFloat(po.total_amount).toLocaleString()}` : '$0'}</td>
-                      <td style={{ padding: '12px 16px' }}>{po.status}</td>
+                {user.role === 'Manager' ? (
+                  recentApprovedQuotes.length > 0 ? (
+                    recentApprovedQuotes.slice(0, 4).map((q, idx, arr) => (
+                      <tr key={q.id} style={{ borderBottom: idx === arr.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '12px 16px' }}>{q.rfq_title}</td>
+                        <td style={{ padding: '12px 16px', fontWeight: 600 }}>{q.company_name}</td>
+                        <td style={{ padding: '12px 16px' }}>${parseFloat(q.price).toLocaleString()}</td>
+                        <td style={{ padding: '12px 16px' }}><span className="badge badge-approved" style={{ fontSize: '11px', padding: '4px 8px' }}>Approved</span></td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No recently approved RFQs found.
+                      </td>
                     </tr>
-                  ))
+                  )
                 ) : (
-                  <tr>
-                    <td colSpan="4" style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
-                      No recent purchase orders found.
-                    </td>
-                  </tr>
+                  recentPos.length > 0 ? (
+                    recentPos.slice(0, 4).map((po, idx, arr) => (
+                      <tr key={po.id} style={{ borderBottom: idx === arr.length - 1 ? 'none' : '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '12px 16px', fontFamily: 'monospace' }}>{po.po_number}</td>
+                        <td style={{ padding: '12px 16px' }}>{po.vendor_name || 'Vendor Partner'}</td>
+                        <td style={{ padding: '12px 16px' }}>{po.total_amount ? `$${parseFloat(po.total_amount).toLocaleString()}` : '$0'}</td>
+                        <td style={{ padding: '12px 16px' }}>{po.status}</td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan="4" style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                        No recent purchase orders found.
+                      </td>
+                    </tr>
+                  )
                 )}
               </tbody>
             </table>
@@ -248,6 +285,15 @@ const Dashboard = ({ setActiveView }) => {
             </button>
             <button className="btn" onClick={() => setActiveView('invoices')} style={{ padding: '8px 32px', backgroundColor: 'transparent', border: '1px solid var(--text-primary)', color: 'var(--text-primary)', borderRadius: '24px', cursor: 'pointer', fontSize: '13px' }}>
               Generate invoices
+            </button>
+          </>
+        ) : user.role === 'Manager' ? (
+          <>
+            <button className="btn" onClick={() => setActiveView('quotations')} style={{ padding: '8px 32px', backgroundColor: 'transparent', border: '1px solid var(--text-primary)', color: 'var(--text-primary)', borderRadius: '24px', cursor: 'pointer', fontSize: '13px' }}>
+              Compare Quotations
+            </button>
+            <button className="btn" onClick={() => setActiveView('approvals')} style={{ padding: '8px 32px', backgroundColor: 'transparent', border: '1px solid var(--text-primary)', color: 'var(--text-primary)', borderRadius: '24px', cursor: 'pointer', fontSize: '13px' }}>
+              Review Pending Approvals
             </button>
           </>
         ) : (

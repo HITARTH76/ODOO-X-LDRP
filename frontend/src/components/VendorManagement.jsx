@@ -47,7 +47,8 @@ const VendorManagement = () => {
     setMessage('');
     try {
       await api.patch(`/vendors/${vendorId}/status`, { status: newStatus });
-      setMessage(`Vendor status changed to ${newStatus} successfully.`);
+      const displayStatus = newStatus === 'Active' ? 'Approved' : newStatus === 'Inactive' ? 'Blocked' : newStatus;
+      setMessage(`Vendor status changed to ${displayStatus} successfully.`);
       setSelectedVendor(null); // Close modal
       await fetchVendors();
     } catch (err) {
@@ -61,7 +62,9 @@ const VendorManagement = () => {
     const matchesSearch = v.company_name.toLowerCase().includes(search.toLowerCase()) || 
                           (v.gst_number && v.gst_number.toLowerCase().includes(search.toLowerCase()));
     const matchesCategory = categoryFilter === 'All' || v.category === categoryFilter;
-    const matchesStatus = statusFilter === 'All' || v.status === statusFilter;
+    const matchesStatus = statusFilter === 'All' || 
+                          (statusFilter === 'Active' && (!v.status || v.status === 'Active' || v.status === 'Approved')) || 
+                          v.status === statusFilter;
     return matchesSearch && matchesCategory && matchesStatus;
   });
 
@@ -69,8 +72,20 @@ const VendorManagement = () => {
     return <div style={{ display: 'flex', justifyContent: 'center', padding: '60px', color: 'var(--text-secondary)' }}>Loading Vendor Directory...</div>;
   }
 
+  const getDisplayStatus = (status) => {
+    if (!status || status === 'Active' || status === 'Approved') return 'Approved';
+    if (status === 'Inactive') return 'Blocked';
+    return status;
+  };
+
+  const getBadgeClass = (status) => {
+    if (!status || status === 'Active' || status === 'Approved') return 'badge-approved';
+    if (status === 'Inactive') return 'badge-blocked';
+    return `badge-${status.toLowerCase()}`;
+  };
+
   const allCount = vendors.length;
-  const activeCount = vendors.filter(v => v.status === 'Approved').length;
+  const activeCount = vendors.filter(v => !v.status || v.status === 'Active' || v.status === 'Approved').length;
   const pendingCount = vendors.filter(v => v.status === 'Pending').length;
   const blockedCount = vendors.filter(v => v.status === 'Inactive').length;
 
@@ -127,8 +142,8 @@ const VendorManagement = () => {
           All ({allCount})
         </button>
         <button 
-          onClick={() => setStatusFilter('Approved')}
-          style={{ padding: '6px 16px', backgroundColor: statusFilter === 'Approved' ? 'var(--primary)' : 'transparent', border: '1px solid var(--border-color)', color: statusFilter === 'Approved' ? '#fff' : 'var(--text-primary)', borderRadius: '20px', cursor: 'pointer', fontSize: '13px' }}
+          onClick={() => setStatusFilter('Active')}
+          style={{ padding: '6px 16px', backgroundColor: statusFilter === 'Active' ? 'var(--primary)' : 'transparent', border: '1px solid var(--border-color)', color: statusFilter === 'Active' ? '#fff' : 'var(--text-primary)', borderRadius: '20px', cursor: 'pointer', fontSize: '13px' }}
         >
           Approved ({activeCount})
         </button>
@@ -174,7 +189,9 @@ const VendorManagement = () => {
                   <td style={{ padding: '16px 24px' }}>{v.gst_number || '-'}</td>
                   <td style={{ padding: '16px 24px' }}>{v.contact_phone || '-'}</td>
                   <td style={{ padding: '16px 24px' }}>
-                    <span style={{ textTransform: 'capitalize' }}>{v.status === 'Inactive' ? 'Blocked' : v.status}</span>
+                    <span className={`badge ${getBadgeClass(v.status)}`}>
+                      {getDisplayStatus(v.status)}
+                    </span>
                   </td>
                   <td style={{ padding: '16px 24px', textAlign: 'center' }}>
                     <button 
@@ -198,7 +215,9 @@ const VendorManagement = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
               <div>
                 <h2 style={{ margin: '0 0 8px 0', fontSize: '24px' }}>{selectedVendor.company_name}</h2>
-                <span className={`badge badge-${selectedVendor.status.toLowerCase()}`}>{selectedVendor.status === 'Inactive' ? 'Blocked' : selectedVendor.status}</span>
+                <span className={`badge ${getBadgeClass(selectedVendor.status)}`}>
+                  {getDisplayStatus(selectedVendor.status)}
+                </span>
               </div>
               <button onClick={() => setSelectedVendor(null)} style={{ background: 'none', border: 'none', fontSize: '24px', cursor: 'pointer', color: 'var(--text-secondary)' }}>&times;</button>
             </div>
@@ -214,9 +233,9 @@ const VendorManagement = () => {
             {user.role === 'Admin' && (
               <div style={{ display: 'flex', gap: '12px', borderTop: '1px solid var(--border-color)', paddingTop: '24px' }}>
                 <button 
-                  onClick={() => handleStatusChange(selectedVendor.id, 'Approved')}
-                  disabled={actionLoading || selectedVendor.status === 'Approved'}
-                  style={{ flex: 1, padding: '10px', backgroundColor: 'var(--success)', color: '#fff', border: 'none', borderRadius: '8px', cursor: selectedVendor.status === 'Approved' ? 'not-allowed' : 'pointer', opacity: selectedVendor.status === 'Approved' ? 0.5 : 1 }}
+                  onClick={() => handleStatusChange(selectedVendor.id, 'Active')}
+                  disabled={actionLoading || selectedVendor.status === 'Active'}
+                  style={{ flex: 1, padding: '10px', backgroundColor: 'var(--success)', color: '#fff', border: 'none', borderRadius: '8px', cursor: selectedVendor.status === 'Active' ? 'not-allowed' : 'pointer', opacity: selectedVendor.status === 'Active' ? 0.5 : 1 }}
                 >
                   Approve / Set Active
                 </button>

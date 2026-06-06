@@ -2,14 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { FileCheck, Mail, Printer, Download, CreditCard, ChevronRight, ListCollapse, Eye } from 'lucide-react';
+import jsPDF from 'jspdf';
 
-const BillingCenter = () => {
+const BillingCenter = ({ activeView = 'billing' }) => {
   const { user } = useAuth();
   
   // Tab states: 'po' | 'invoice'
-  const [activeTab, setActiveTab] = useState('po');
+  const [activeTab, setActiveTab] = useState(activeView === 'invoices' ? 'invoice' : 'po');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeView === 'invoices') setActiveTab('invoice');
+    if (activeView === 'purchase_orders') setActiveTab('po');
+  }, [activeView]);
 
   // Data
   const [pos, setPos] = useState([]);
@@ -128,42 +134,74 @@ const BillingCenter = () => {
   };
 
   const handleDownloadSimulatedPdf = (invoice) => {
-    const docText = `
-VENDORBRIDGE PROCUREMENT ERP
-INVOICE DETAILS - ${invoice.invoice_number}
-===========================================
-Invoice Date: ${new Date(invoice.created_at).toLocaleDateString()}
-PO Reference: ${invoice.po_number}
-Payment Status: ${invoice.status.toUpperCase()}
-
-Vendor Partner:
--------------------------------------------
-Company: ${invoice.company_name}
-GST Number: ${invoice.gst_number || 'N/A'}
-Contact: ${invoice.contact_phone}
-Address: ${invoice.address}
-
-Bidded Proposal Item:
--------------------------------------------
-Scope/RFQ: ${invoice.rfq_title}
-Unit Count: ${invoice.quantity}
-Unit Price: $${(parseFloat(invoice.base_amount) / parseInt(invoice.quantity)).toFixed(2)} USD
-
-Calculated Total:
--------------------------------------------
-Subtotal Amount: $${parseFloat(invoice.base_amount).toFixed(2)} USD
-GST Tax (18%): $${parseFloat(invoice.tax_amount).toFixed(2)} USD
-Grand Total: $${parseFloat(invoice.total_amount).toFixed(2)} USD
-
-===========================================
-    `;
-    const blob = new Blob([docText], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `${invoice.invoice_number}.txt`;
-    link.click();
-    URL.revokeObjectURL(url);
+    const doc = new jsPDF();
+    
+    // Header
+    doc.setFontSize(20);
+    doc.setTextColor(0, 51, 102);
+    doc.text('VENDORBRIDGE INVOICE', 105, 20, { align: 'center' });
+    
+    doc.setFontSize(10);
+    doc.setTextColor(100, 100, 100);
+    doc.text('Enterprise Procurement Operations', 105, 26, { align: 'center' });
+    
+    // Invoice details
+    doc.setFontSize(12);
+    doc.setTextColor(0, 0, 0);
+    doc.text(`Invoice Number: ${invoice.invoice_number}`, 20, 40);
+    doc.text(`Date: ${new Date(invoice.created_at).toLocaleDateString()}`, 140, 40);
+    doc.text(`PO Reference: ${invoice.po_number}`, 20, 48);
+    doc.text(`Status: ${invoice.status.toUpperCase()}`, 140, 48);
+    
+    doc.setLineWidth(0.5);
+    doc.line(20, 55, 190, 55);
+    
+    // Vendor Info
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Billed To / Supplier Details:', 20, 65);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Company: ${invoice.company_name}`, 20, 72);
+    doc.text(`GST Number: ${invoice.gst_number || 'N/A'}`, 20, 78);
+    doc.text(`Contact: ${invoice.contact_phone}`, 20, 84);
+    doc.text(`Address: ${invoice.address}`, 20, 90);
+    
+    doc.line(20, 100, 190, 100);
+    
+    // Item Info
+    doc.setFont('helvetica', 'bold');
+    doc.text('Description', 20, 110);
+    doc.text('Quantity', 120, 110);
+    doc.text('Amount (USD)', 150, 110);
+    
+    doc.setFont('helvetica', 'normal');
+    const unitPrice = (parseFloat(invoice.base_amount) / parseInt(invoice.quantity)).toFixed(2);
+    
+    doc.text(`${invoice.rfq_title}`, 20, 120);
+    doc.text(`${invoice.quantity}`, 120, 120);
+    doc.text(`$${parseFloat(invoice.base_amount).toLocaleString()}`, 150, 120);
+    
+    doc.line(20, 130, 190, 130);
+    
+    // Totals
+    doc.text(`Subtotal:`, 120, 140);
+    doc.text(`$${parseFloat(invoice.base_amount).toLocaleString()}`, 150, 140);
+    
+    doc.text(`GST (18%):`, 120, 148);
+    doc.text(`$${parseFloat(invoice.tax_amount).toLocaleString()}`, 150, 148);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text(`Grand Total:`, 120, 158);
+    doc.text(`$${parseFloat(invoice.total_amount).toLocaleString()}`, 150, 158);
+    
+    // Footer
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(150, 150, 150);
+    doc.text('This is a computer-generated transaction ledger document.', 105, 280, { align: 'center' });
+    
+    // Save PDF
+    doc.save(`${invoice.invoice_number}.pdf`);
   };
 
   const handleSendEmail = async (e) => {
@@ -171,8 +209,9 @@ Grand Total: $${parseFloat(invoice.total_amount).toFixed(2)} USD
     if (!emailAddress) return;
     setActionLoading(true);
     try {
-      await api.post(`/invoices/${selectedInvoice.id}/email`, { emailAddress });
-      alert(`Invoice dispatched to ${emailAddress} successfully (simulated).`);
+      const response = await api.post(`/invoices/${selectedInvoice.id}/email`, { emailAddress });
+      
+      alert(response.message || `Invoice dispatched to ${emailAddress} successfully.`);
       setShowEmailModal(false);
     } catch (err) {
       alert(`Email dispatch failed: ${err.message}`);
@@ -189,42 +228,48 @@ Grand Total: $${parseFloat(invoice.total_amount).toFixed(2)} USD
     <div>
       <div className="card-header" style={{ marginBottom: '16px' }}>
         <div>
-          <h2 style={{ fontSize: '18px', fontWeight: '700' }}>Procurement & Financial Billing Center</h2>
-          <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Convert agreements to purchase orders, issue invoices, and track payment transactions.</p>
+          <h2 style={{ fontSize: '18px', fontWeight: '700' }}>
+            {activeView === 'purchase_orders' ? 'Purchase Orders Management' : activeView === 'invoices' ? 'Invoice Document Center' : 'Procurement & Financial Billing Center'}
+          </h2>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>
+            {activeView === 'purchase_orders' ? 'Convert agreements to purchase orders and dispatch them to vendors.' : activeView === 'invoices' ? 'Issue invoices, download PDF documents, and track payment transactions.' : 'Convert agreements to purchase orders, issue invoices, and track payment transactions.'}
+          </p>
         </div>
       </div>
 
-      {/* Tabs Switcher */}
-      <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '20px' }}>
-        <button
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'po' ? 'var(--primary)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'po' ? '2px solid var(--primary)' : 'none',
-            fontWeight: activeTab === 'po' ? 600 : 500,
-            cursor: 'pointer'
-          }}
-          onClick={() => { setActiveTab('po'); setSelectedInvoice(null); }}
-        >
-          Purchase Orders ({pos.length})
-        </button>
-        <button
-          style={{
-            padding: '10px 20px',
-            border: 'none',
-            background: 'none',
-            color: activeTab === 'invoice' ? 'var(--primary)' : 'var(--text-secondary)',
-            borderBottom: activeTab === 'invoice' ? '2px solid var(--primary)' : 'none',
-            fontWeight: activeTab === 'invoice' ? 600 : 500,
-            cursor: 'pointer'
-          }}
-          onClick={() => { setActiveTab('invoice'); setSelectedInvoice(null); }}
-        >
-          Invoices ({invoices.length})
-        </button>
-      </div>
+      {/* Tabs Switcher - Hidden if specifically navigating to PO or Invoices */}
+      {activeView === 'billing' && (
+        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', marginBottom: '20px' }}>
+          <button
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              background: 'none',
+              color: activeTab === 'po' ? 'var(--primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'po' ? '2px solid var(--primary)' : 'none',
+              fontWeight: activeTab === 'po' ? 600 : 500,
+              cursor: 'pointer'
+            }}
+            onClick={() => { setActiveTab('po'); setSelectedInvoice(null); }}
+          >
+            Purchase Orders ({pos.length})
+          </button>
+          <button
+            style={{
+              padding: '10px 20px',
+              border: 'none',
+              background: 'none',
+              color: activeTab === 'invoice' ? 'var(--primary)' : 'var(--text-secondary)',
+              borderBottom: activeTab === 'invoice' ? '2px solid var(--primary)' : 'none',
+              fontWeight: activeTab === 'invoice' ? 600 : 500,
+              cursor: 'pointer'
+            }}
+            onClick={() => { setActiveTab('invoice'); setSelectedInvoice(null); }}
+          >
+            Invoices ({invoices.length})
+          </button>
+        </div>
+      )}
 
       {/* Invoice Email Modal Popup */}
       {showEmailModal && (
@@ -312,37 +357,41 @@ Grand Total: $${parseFloat(invoice.total_amount).toFixed(2)} USD
                           <span className={`badge badge-${po.status.toLowerCase()}`}>{po.status}</span>
                         </td>
                         <td>
-                          {user.role === 'Vendor' && po.status === 'Sent' && (
-                            <div style={{ display: 'flex', gap: '6px' }}>
-                              <button className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '11px', backgroundColor: 'var(--success)' }} onClick={() => handleUpdatePoStatus(po.id, 'Accepted')} disabled={actionLoading}>
-                                Accept
-                              </button>
-                              <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => handleUpdatePoStatus(po.id, 'Cancelled')} disabled={actionLoading}>
-                                Cancel
-                              </button>
+                          {user.role === 'Vendor' ? (
+                            <div>
+                              {po.status === 'Sent' ? (
+                                <div style={{ display: 'flex', gap: '6px' }}>
+                                  <button className="btn btn-primary" style={{ padding: '4px 8px', fontSize: '11px', backgroundColor: 'var(--success)' }} onClick={() => handleUpdatePoStatus(po.id, 'Accepted')} disabled={actionLoading}>
+                                    Accept
+                                  </button>
+                                  <button className="btn btn-danger" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => handleUpdatePoStatus(po.id, 'Cancelled')} disabled={actionLoading}>
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : po.status === 'Accepted' ? (
+                                hasInvoice ? (
+                                  <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Invoiced</span>
+                                ) : (
+                                  <button className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => handleCreateInvoice(po.id)} disabled={actionLoading}>
+                                    Generate Invoice
+                                  </button>
+                                )
+                              ) : (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>{po.status === 'Completed' ? 'Invoiced' : 'Acknowledged'}</span>
+                              )}
                             </div>
-                          )}
-
-                          {['Procurement Officer', 'Admin'].includes(user.role) && (
+                          ) : ['Procurement Officer', 'Admin'].includes(user.role) ? (
                             <div>
                               {hasInvoice ? (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Invoiced</span>
-                              ) : ['Sent', 'Accepted'].includes(po.status) ? (
-                                <button className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '11px' }} onClick={() => handleCreateInvoice(po.id)} disabled={actionLoading}>
-                                  Generate Invoice
-                                </button>
+                              ) : po.status === 'Accepted' ? (
+                                <span style={{ color: 'var(--warning)', fontSize: '12px', fontWeight: 600 }}>Awaiting Invoice</span>
                               ) : (
                                 <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>PO {po.status}</span>
                               )}
                             </div>
-                          )}
-
-                          {user.role === 'Manager' && (
+                          ) : user.role === 'Manager' && (
                             <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Read-only</span>
-                          )}
-
-                          {user.role === 'Vendor' && po.status !== 'Sent' && (
-                            <span style={{ color: 'var(--text-muted)', fontSize: '12px' }}>Acknowledged</span>
                           )}
                         </td>
                       </tr>
@@ -414,7 +463,7 @@ Grand Total: $${parseFloat(invoice.total_amount).toFixed(2)} USD
               </button>
             )}
             <button className="btn btn-secondary" onClick={() => handleDownloadSimulatedPdf(selectedInvoice)}>
-              <Download size={14} /> Download Plain Text
+              <Download size={14} /> Download PDF
             </button>
             <button className="btn btn-secondary" onClick={() => { setEmailAddress(selectedInvoice.contact_email || ''); setShowEmailModal(true); }}>
               <Mail size={14} /> Email Invoice

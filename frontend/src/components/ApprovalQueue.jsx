@@ -4,6 +4,8 @@ import { CheckCircle2, XCircle, FileClock, ClipboardList, Send } from 'lucide-re
 
 const ApprovalQueue = () => {
   const [pendingQuotes, setPendingQuotes] = useState([]);
+  const [approvedQuotes, setApprovedQuotes] = useState([]);
+  const [activeTab, setActiveTab] = useState('Pending');
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [selectedQuote, setSelectedQuote] = useState(null);
@@ -15,20 +17,24 @@ const ApprovalQueue = () => {
       setLoading(true);
       const rfqs = await api.get('/rfqs');
       const allPending = [];
+      const allApproved = [];
 
       for (const rfq of rfqs) {
         // Fetch quotes for each rfq
         const quotes = await api.get(`/quotations/rfq/${rfq.id}`);
-        // Filter those submitted/under review
-        const submitted = quotes.filter(q => q.status === 'Submitted' || q.status === 'Under Review');
-        submitted.forEach(q => {
-          allPending.push({ ...q, rfq_title: rfq.title, rfq_qty: rfq.quantity });
+        quotes.forEach(q => {
+          if (q.status === 'Submitted' || q.status === 'Under Review') {
+            allPending.push({ ...q, rfq_title: rfq.title, rfq_qty: rfq.quantity });
+          } else if (q.status === 'Approved') {
+            allApproved.push({ ...q, rfq_title: rfq.title, rfq_qty: rfq.quantity });
+          }
         });
       }
 
       setPendingQuotes(allPending);
+      setApprovedQuotes(allApproved);
     } catch (err) {
-      console.error('Error fetching pending quotes:', err);
+      console.error('Error fetching quotes:', err);
     } finally {
       setLoading(false);
     }
@@ -84,6 +90,21 @@ const ApprovalQueue = () => {
           <h2 style={{ fontSize: '18px', fontWeight: '700' }}>Procurement Workflow Approval Queue</h2>
           <p style={{ color: 'var(--text-secondary)', fontSize: '12px' }}>Review submitted vendor proposals, inspect bid details, and grant approvals.</p>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: '8px', marginBottom: '24px' }}>
+        <button 
+          onClick={() => setActiveTab('Pending')}
+          style={{ padding: '6px 16px', backgroundColor: activeTab === 'Pending' ? 'var(--primary)' : 'transparent', border: '1px solid var(--border-color)', color: activeTab === 'Pending' ? '#fff' : 'var(--text-primary)', borderRadius: '20px', cursor: 'pointer', fontSize: '13px' }}
+        >
+          Pending ({pendingQuotes.length})
+        </button>
+        <button 
+          onClick={() => setActiveTab('Approved')}
+          style={{ padding: '6px 16px', backgroundColor: activeTab === 'Approved' ? 'var(--primary)' : 'transparent', border: '1px solid var(--border-color)', color: activeTab === 'Approved' ? '#fff' : 'var(--text-primary)', borderRadius: '20px', cursor: 'pointer', fontSize: '13px' }}
+        >
+          Approved ({approvedQuotes.length})
+        </button>
       </div>
 
       {/* Detail Review Portal Modal */}
@@ -190,14 +211,14 @@ const ApprovalQueue = () => {
             </tr>
           </thead>
           <tbody>
-            {pendingQuotes.length === 0 ? (
+            {(activeTab === 'Pending' ? pendingQuotes : approvedQuotes).length === 0 ? (
               <tr>
                 <td colSpan={6} style={{ textAlign: 'center', color: 'var(--text-secondary)', padding: '24px' }}>
-                  No quotations pending approval decisions.
+                  No quotations {activeTab === 'Pending' ? 'pending approval decisions' : 'approved yet'}.
                 </td>
               </tr>
             ) : (
-              pendingQuotes.map(q => (
+              (activeTab === 'Pending' ? pendingQuotes : approvedQuotes).map(q => (
                 <tr key={q.id}>
                   <td style={{ fontFamily: 'monospace', fontSize: '13px' }}>#QTE-{String(q.id).padStart(4, '0')}</td>
                   <td style={{ fontWeight: 600 }}>{q.company_name}</td>
@@ -205,9 +226,13 @@ const ApprovalQueue = () => {
                   <td style={{ fontWeight: 700 }}>${parseFloat(q.price).toLocaleString()}</td>
                   <td>{q.delivery_days} Days</td>
                   <td>
-                    <button className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => handleOpenReview(q)}>
-                      <ClipboardList size={12} /> Review Bid
-                    </button>
+                    {activeTab === 'Pending' ? (
+                      <button className="btn btn-outline" style={{ padding: '4px 8px', fontSize: '12px' }} onClick={() => handleOpenReview(q)}>
+                        <ClipboardList size={12} /> Review Bid
+                      </button>
+                    ) : (
+                      <span className="badge badge-approved">Approved</span>
+                    )}
                   </td>
                 </tr>
               ))
